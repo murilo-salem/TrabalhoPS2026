@@ -7,18 +7,22 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Cabeçalho: estado geral do programa, atualizado por app.js. -->
   <header class="topbar">
     <div class="brand"><span class="brand-mark">S/X</span><span>SIC/XE <small>SIMULADOR</small></span></div>
     <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Nenhum programa carregado</span></div>
   </header>
   <main>
+    <!-- A memória e a palavra seguem a convenção descrita em docs/IMPLEMENTACAO.md. -->
     <section class="intro">
-      <div><p class="eyebrow">COMPUTADOR HIPOTÉTICO</p><h1>Explore cada ciclo de execução.</h1><p>Carregue um programa objeto, avance pelas instruções e observe registradores, memória e saída em tempo real.</p></div>
+      <div><p class="eyebrow">COMPUTADOR HIPOTÉTICO</p><h1>Explore cada ciclo de execução.</h1><p>Carregue um programa objeto, avance pelas instruções e observe as mudanças nos registradores e na memória.</p></div>
       <div class="hero-stat"><span>MEMÓRIA</span><strong>1 MiB</strong><span>PALAVRA</span><strong>24 bits</strong></div>
     </section>
+    <!-- Mensagens de erro e orientação são anunciadas sem recarregar a página. -->
     <div id="notice" class="notice" role="status" aria-live="polite"></div>
     <div class="layout">
       <div class="main-column">
+        <!-- Carregamento de registros objeto; escolher um arquivo ainda não o executa. -->
         <section class="panel loader">
           <div class="panel-heading"><div><p class="eyebrow">01 / ENTRADA</p><h2>Programa objeto</h2></div><span class="tag">H · T · M · E</span></div>
           <div class="field-row"><label class="file-button">Escolher arquivo <input id="file" type="file" accept=".obj,.txt,.sic,.*"></label><span id="fileName" class="muted">ou cole o conteúdo abaixo</span></div>
@@ -27,12 +31,14 @@
           <div class="field-row bottom"><label for="loadAddress">Endereço de carga <input id="loadAddress" value="0x00000" inputmode="text"></label><button id="load" class="primary">Carregar programa</button></div>
           <button id="example" class="text-button">Inserir exemplo de soma →</button>
         </section>
+        <!-- Execução por passo, limite de passos e parada antes do endereço informado. -->
         <section class="panel controls">
           <div class="panel-heading"><div><p class="eyebrow">02 / EXECUÇÃO</p><h2>Controle</h2></div><span id="programName" class="tag">—</span></div>
           <div class="actions"><button id="step" class="primary" disabled>Avançar 1 instrução</button><button id="run" disabled>Executar</button><button id="reset" disabled>Reiniciar</button></div>
           <div class="field-row settings"><label for="limit">Limite de passos <input id="limit" type="number" min="1" max="100000" value="10000"></label><label for="breakpoint">Parar antes do endereço <input id="breakpoint" placeholder="0x... (opcional)"></label></div>
           <div class="run-meta"><div><span>PC</span><strong id="pc">00000</strong></div><div><span>PASSOS</span><strong id="steps">0</strong></div><div><span>CC</span><strong id="cc">=</strong></div></div>
         </section>
+        <!-- Janela de 16 bytes por linha; o botão pode seguir ou não o PC. -->
         <section class="panel memory-panel">
           <div class="panel-heading"><div><p class="eyebrow">03 / INSPEÇÃO</p><h2>Memória</h2></div><span class="tag">HEXADECIMAL</span></div>
           <div class="field-row"><label for="memoryAddress">Endereço inicial <input id="memoryAddress" value="0x00000"></label><button id="inspect">Inspecionar</button><button id="follow" class="text-button active" aria-pressed="true">Seguir PC: ligado</button></div>
@@ -41,9 +47,10 @@
         </section>
       </div>
       <aside class="side-column">
+        <!-- Registradores e ajuda refletem o recorte de instruções do trabalho. -->
         <section class="panel registers"><div class="panel-heading"><div><p class="eyebrow">ESTADO</p><h2>Registradores</h2></div><span class="tag">HEX / DEC</span></div><div id="registers" class="register-grid"></div></section>
-        <section class="panel io"><div class="panel-heading"><div><p class="eyebrow">DISPOSITIVOS</p><h2>Entrada e saída</h2></div></div><label for="input" class="label">Entrada para RD</label><textarea id="input" rows="3" placeholder="Texto a ser consumido por RD"></textarea><div class="field-row"><button id="sendInput" disabled>Enviar entrada</button><span id="inputCount" class="muted">0 bytes na fila</span></div><label for="output" class="label">Saída de WD</label><pre id="output" class="output">—</pre></section>
-        <section class="panel help"><p class="eyebrow">REFERÊNCIA RÁPIDA</p><h2>Como usar</h2><ol><li>Abra um arquivo objeto SIC/XE ou use o exemplo.</li><li>Carregue no endereço desejado.</li><li>Avance uma instrução ou execute até o limite ou ponto de parada.</li><li>Veja os efeitos nos registradores, memória e saída.</li></ol></section>
+        <section class="panel help"><p class="eyebrow">PRIMEIRO TRABALHO</p><h2>Conjunto de instruções</h2><p>Esta versão executa as instruções em preto na tabela do enunciado. Instruções em vermelho, incluindo ponto flutuante e entrada/saída, encerram a execução com uma mensagem explicativa.</p><p>O registrador F de 48 bits é exibido conforme a tabela de registradores; permanece zerado nesta etapa.</p></section>
+        <section class="panel help"><p class="eyebrow">REFERÊNCIA RÁPIDA</p><h2>Como usar</h2><ol><li>Abra um arquivo objeto SIC/XE ou use o exemplo.</li><li>Carregue no endereço desejado.</li><li>Avance uma instrução ou execute até o limite ou ponto de parada.</li><li>Veja os efeitos nos registradores e na memória.</li></ol></section>
       </aside>
     </div>
   </main>

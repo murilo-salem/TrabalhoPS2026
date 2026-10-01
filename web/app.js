@@ -1,3 +1,4 @@
+// A página é pequena e usa os IDs do HTML como ligação direta aos controles.
 const $ = id => document.getElementById(id);
 const names = ['A', 'X', 'L', 'B', 'S', 'T', 'PC', 'SW'];
 const format = (value, width = 6) => Number(value).toString(16).toUpperCase().padStart(width, '0');
@@ -5,6 +6,8 @@ let followPc = true;
 let memoryAddress = 0;
 let lastRegisters = [];
 let machine = null;
+// PC pode ultrapassar o último byte após executar uma instrução no fim da memória.
+const pcAddress = data => Math.min(data.registers[6], 0xFFFFF) & ~15;
 
 function showNotice(message, error = false) {
   const notice = $('notice');
@@ -14,6 +17,7 @@ function showNotice(message, error = false) {
 }
 
 function parseAddress(text) {
+  // Na interface, hexadecimal exige 0x; sem prefixo, o número é decimal.
   const value = text.trim();
   if (!/^(0x[0-9a-f]+|[0-9]+)$/i.test(value)) throw new Error('Use endereço decimal ou hexadecimal com prefixo 0x.');
   const number = Number(value);
@@ -22,6 +26,7 @@ function parseAddress(text) {
 }
 
 async function request(path, method = 'GET', body = '') {
+  // Respostas HTTP com erro também trazem JSON com uma mensagem para o usuário.
   const response = await fetch(path, { method, body: method === 'GET' ? undefined : body });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Falha na operação.');
@@ -29,10 +34,12 @@ async function request(path, method = 'GET', body = '') {
 }
 
 function renderMemory(data) {
+  // A API envia uma janela curta; cada linha exibe 16 bytes e sua visão ASCII.
   const rows = [];
   for (let offset = 0; offset < data.memory.length; offset += 16) {
     const bytes = data.memory.slice(offset, offset + 16);
     const cells = bytes.map((byte, index) => `<td class="${data.memoryAddress + offset + index === data.registers[6] ? 'current' : ''}">${format(byte, 2)}</td>`).join('');
+    // O conteúdo do programa não deve ser interpretado como HTML na coluna ASCII.
     const ascii = bytes.map(byte => byte >= 32 && byte <= 126 ? String.fromCharCode(byte).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) : '·').join('');
     rows.push(`<tr><td>${format(data.memoryAddress + offset, 5)}</td>${cells}<td>${ascii}</td></tr>`);
   }
@@ -40,32 +47,36 @@ function renderMemory(data) {
 }
 
 function render(data) {
+  // Um único estado retornado pelo executor atualiza todos os painéis.
   machine = data;
   const ready = data.loaded;
-  for (const id of ['step', 'run', 'reset', 'sendInput']) $(id).disabled = !ready || (id !== 'reset' && id !== 'sendInput' && data.halted);
+  for (const id of ['step', 'run', 'reset']) $(id).disabled = !ready || (id !== 'reset' && data.halted);
   $('programName').textContent = ready ? data.name || 'SEM NOME' : '—';
-  $('statusText').textContent = !ready ? 'Nenhum programa carregado' : data.error ? `Erro: ${data.error}` : data.halted ? 'Execução encerrada' : `${data.name || 'Programa'} em execução`;
+  $('statusText').textContent = !ready ? 'Nenhum programa carregado' : data.error ? `Erro: ${data.error}` : data.halted ? 'Execução encerrada' : `${data.name || 'Programa'} pronto para continuar`;
   $('statusDot').className = 'dot' + (data.error ? ' error' : ready && !data.halted ? ' running' : '');
   $('pc').textContent = format(data.registers[6], 5);
   $('steps').textContent = data.steps.toLocaleString('pt-BR');
   $('cc').textContent = data.condition < 0 ? '<' : data.condition > 0 ? '>' : '=';
-  $('inputCount').textContent = `${data.inputCount} byte(s) na fila`;
-  $('output').textContent = data.output || '—';
+  // Compara com a resposta anterior para destacar apenas registradores alterados.
   $('registers').innerHTML = names.map((name, index) => `<div class="register ${lastRegisters[index] !== undefined && lastRegisters[index] !== data.registers[index] ? 'highlight' : ''}"><span class="name">${name}</span><span class="hex">${format(data.registers[index], name === 'PC' ? 5 : 6)}</span><span class="decimal">${Number(data.registers[index]).toLocaleString('pt-BR')}</span></div>`).join('') + `<div class="register"><span class="name">F</span><span class="hex">${format(data.floating, 12)}</span><span class="decimal">48 bits</span></div>`;
   lastRegisters = [...data.registers];
   renderMemory(data);
   if (data.error) showNotice(data.error, true);
+  else $('notice').classList.remove('show');
 }
 
 async function refresh(address = memoryAddress) {
+  // Busca estado e a janela de memória escolhida, sem executar instruções.
   render(await request(`/api/state?address=${address}&count=128`));
 }
 
 async function action(path, body = '') {
+  // Após executar um comando, atualiza o estado e opcionalmente acompanha o PC.
   try {
     const data = await request(path, 'POST', body);
+    render(data);
     if (followPc) {
-      memoryAddress = data.registers[6] & ~15;
+      memoryAddress = pcAddress(data);
       $('memoryAddress').value = `0x${format(memoryAddress, 5)}`;
       await refresh(memoryAddress);
     } else await refresh(memoryAddress);
@@ -73,6 +84,7 @@ async function action(path, body = '') {
 }
 
 $('file').addEventListener('change', async event => {
+  // A escolha do arquivo apenas preenche a área de texto; carregar é ação separada.
   const file = event.target.files[0];
   if (!file) return;
   $('object').value = await file.text();
@@ -97,21 +109,20 @@ $('run').addEventListener('click', () => {
   } catch (error) { showNotice(error.message, true); }
 });
 $('reset').addEventListener('click', () => action('/api/reset'));
-$('sendInput').addEventListener('click', async () => {
-  await action('/api/input', $('input').value);
-  $('input').value = '';
-});
 $('inspect').addEventListener('click', async () => {
+  // Alinha o endereço à primeira coluna de uma linha de 16 bytes.
   try { memoryAddress = parseAddress($('memoryAddress').value) & ~15; await refresh(memoryAddress); }
   catch (error) { showNotice(error.message, true); }
 });
 $('follow').addEventListener('click', () => {
+  // Quando desligado, a janela de memória fica no endereço escolhido manualmente.
   followPc = !followPc;
   $('follow').textContent = `Seguir PC: ${followPc ? 'ligado' : 'desligado'}`;
   $('follow').setAttribute('aria-pressed', followPc);
-  if (followPc && machine) { memoryAddress = machine.registers[6] & ~15; $('memoryAddress').value = `0x${format(memoryAddress, 5)}`; refresh(memoryAddress).catch(error => showNotice(error.message, true)); }
+  if (followPc && machine) { memoryAddress = pcAddress(machine); $('memoryAddress').value = `0x${format(memoryAddress, 5)}`; refresh(memoryAddress).catch(error => showNotice(error.message, true)); }
 });
 if (location.protocol === 'file:') {
+  // Abrir o HTML isolado não disponibiliza a API do executor.
   showNotice('A interface precisa do executor. No terminal, execute ./executar.sh na pasta do projeto; o navegador será aberto automaticamente.', true);
 } else {
   refresh(0).catch(error => showNotice(error.message, true));
