@@ -1,6 +1,6 @@
 # Simulador SIC/XE
 
-Simulador em C++17 com interface visual local no navegador, adaptado às instruções em preto do `PRIMEIRO_TRABALHO_SIC_XE.pdf`. C++ foi mantido conforme orientação do responsável pelo projeto. O executor e a interface operam integrados: carga de programas objeto, execução por instrução, execução limitada, ponto de parada, reinício e inspeção de registradores e memória.
+Simulador e montador SIC/XE em C++17 com interface visual local no navegador, adaptado às instruções em preto do `PRIMEIRO_TRABALHO_SIC_XE.pdf`. C++ foi mantido conforme orientação do responsável pelo projeto. O montador de duas passagens, o executor e a interface operam integrados: montagem de fonte, carga de programas objeto, execução por instrução, execução limitada, ponto de parada, reinício e inspeção de registradores e memória.
 
 ## Compilar e executar
 
@@ -21,7 +21,15 @@ ctest --test-dir build/local --output-on-failure
 ./build/local/sicxe_sim 8080
 ```
 
-A porta é opcional; o servidor escuta apenas em `127.0.0.1`. Clique em **Inserir exemplo de soma** e **Carregar programa** para começar. O arquivo [examples/soma.obj](examples/soma.obj) contém o mesmo exemplo; após a execução, `A` e a palavra no endereço `0x0000C` valem 12.
+A porta é opcional; o servidor escuta apenas em `127.0.0.1`. Clique em **Inserir exemplo fonte**, **Montar programa** e **Carregar programa** para percorrer o fluxo completo. Também é possível inserir diretamente um objeto. O arquivo [examples/soma.obj](examples/soma.obj) contém o mesmo exemplo; após a execução, `A` e a palavra no endereço `0x0000C` valem 12.
+
+## Montador de duas passagens
+
+Na primeira passagem, o montador calcula `LOCCTR`, valida os tamanhos e constrói `SYMTAB`. Na segunda, resolve os símbolos, escolhe deslocamento relativo ao PC ou à base e gera registros objeto `H`, `T`, `M` e `E`, além de uma listagem com endereço e código por linha.
+
+São aceitos comentários iniciados por `.`, rótulos sem distinção entre maiúsculas e minúsculas, formatos 2, 3 e 4 (`+`), operandos simples, imediatos (`#`), indiretos (`@`) e indexados (`,X`). As diretivas implementadas são `START`, `END`, `BYTE`, `WORD`, `RESB`, `RESW`, `BASE` e `NOBASE`. Constantes `BYTE` usam `C'...'` ou `X'...'`; números são decimais, exceto o endereço de `START`, que segue a notação hexadecimal tradicional do SIC/XE. Prefixo `0x` e sufixo `H` também explicitam hexadecimal.
+
+O montador gera objetos apenas para as 38 instruções executáveis desta versão. Diagnósticos incluem a linha fonte e não alteram um programa já carregado. Formato 3 tenta PC relativo e depois base relativo; quando nenhum cabe, a mensagem orienta usar formato 4 ou `BASE`.
 
 `sh ./compilar.sh` compila, roda os testes e atualiza `build/sicxe_sim` apenas se eles passarem. Python 3 habilita os testes HTTP; os testes do executor não exigem dependências adicionais. Executáveis antigos não validam alterações nos fontes.
 
@@ -43,7 +51,7 @@ Os exemplos usam endereçamento relativo ao PC e podem ser carregados em `0x1000
 - Executa as 38 instruções em preto, nos formatos 2, 3 e 4 e modo SIC compatível. As 21 instruções em vermelho são rejeitadas com mensagem explicativa; todos os opcodes de formato 1 da tabela estão nesse grupo. Não há operações de dispositivos nesta etapa.
 - `RSUB` no nível principal encerra a execução; `L` começa com o endereço sentinela `0xFFFFF`.
 - `F` é exposto para inspeção em hexadecimal e permanece zerado, pois suas instruções estão excluídas.
-- Erros preservam os registradores da instrução que falhou e seu PC para inspeção. O carregador não é um montador de assembly.
+- Erros preservam os registradores da instrução que falhou e seu PC para inspeção. O carregador e o montador são módulos separados ligados pela interface.
 
 O servidor é sequencial, usa APIs Linux/POSIX e foi concebido para uso local por uma pessoa. Reiniciar recarrega o programa e reinicializa os registradores.
 

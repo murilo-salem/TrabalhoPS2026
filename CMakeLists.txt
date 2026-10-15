@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Also works when the build directory is nested or outside the repository.
 file(COPY web DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
-add_library(sicxe src/sicxe.cpp)
+add_library(sicxe src/sicxe.cpp src/assembler.cpp)
 target_include_directories(sicxe PUBLIC src)
 target_compile_options(sicxe PRIVATE -Wall -Wextra -Wpedantic)
 
@@ -25,6 +25,11 @@ add_executable(sicxe_requirements_tests tests/test_requirements.cpp)
 target_link_libraries(sicxe_requirements_tests PRIVATE sicxe)
 target_compile_options(sicxe_requirements_tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME sicxe_requirements_tests COMMAND sicxe_requirements_tests)
+
+add_executable(assembler_tests tests/test_assembler.cpp)
+target_link_libraries(assembler_tests PRIVATE sicxe)
+target_compile_options(assembler_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME assembler_tests COMMAND assembler_tests)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)

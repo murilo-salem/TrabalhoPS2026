@@ -1,4 +1,5 @@
 #include "sicxe.hpp"
+#include "assembler.hpp"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -18,10 +19,11 @@
 #include <stdexcept>
 #include <string>
 
-namespace {
 // Serializa uma string JSON. Nome de programa e erro podem vir do arquivo
 // enviado pelo usuário; aspas, barras e caracteres de controle precisam ser
 // escapados antes de entrar na resposta da API.
+
+namespace {
 std::string quote(const std::string& value) {
     std::ostringstream output;
     output << '"';
@@ -29,8 +31,8 @@ std::string quote(const std::string& value) {
         switch (ch) {
             case '"': output << "\\\""; break;
             case '\\': output << "\\\\"; break;
-            case '\n': output << "\\n"; break;
-            case '\r': output << "\\r"; break;
+            case '\n': output << "\\n"; break; // Função para fazer Strings serem usadas entre aspas (JSON ex.).
+            case '\r': output << "\\r"; break; // Lida bem com comandos.
             case '\t': output << "\\t"; break;
             default:
                 if (ch < 32) output << "\\u" << std::hex << std::setw(4) << std::setfill('0') << int(ch) << std::dec;
@@ -39,6 +41,9 @@ std::string quote(const std::string& value) {
     }
     return output.str() + '"';
 }
+
+// Converte um texto decimal (ou hexadecimal com `0x`) em `uint32_t`, usando um valor padrão se estiver vazio
+// e rejeitando formatos inválidos, sinais, espaços, sobras de texto e valores grandes demais.
 
 uint32_t number(const std::string& text, uint32_t fallback = 0) {
     // Os parâmetros da URL são decimais, salvo prefixo explícito 0x. O valor
@@ -53,6 +58,8 @@ uint32_t number(const std::string& text, uint32_t fallback = 0) {
     if (consumed != text.size() || value > 0xffffffffu) throw std::runtime_error("Número inválido");
     return uint32_t(value);
 }
+
+// Extrai os parâmetros da URL após `?`, separando pares como `chave=valor` por `&`, e os retorna em um mapa
 
 std::map<std::string,std::string> query_parameters(const std::string& target) {
     // Separa a parte depois de '?' em pares chave=valor. As rotas atuais usam
@@ -69,9 +76,10 @@ std::map<std::string,std::string> query_parameters(const std::string& target) {
     return result;
 }
 
+// Monta o JSON consumido por render() no navegador. A memória inteira tem
+// 1 MiB; a resposta inclui só uma janela de até 512 bytes para cada ação.
+
 std::string state(const SicXe& machine, uint32_t address, uint32_t count) {
-    // Monta o JSON consumido por render() no navegador. A memória inteira tem
-    // 1 MiB; a resposta inclui só uma janela de até 512 bytes para cada ação.
     count = std::min(count, 512u);
     if (address >= SicXe::memory_size) throw std::runtime_error("Endereço de visualização fora da memória");
     count = std::min(count, SicXe::memory_size-address);
@@ -92,9 +100,22 @@ std::string state(const SicXe& machine, uint32_t address, uint32_t count) {
     return out.str() + "]}";
 }
 
+std::string assembly_json(const AssemblyResult& result) {
+    std::ostringstream out;
+    out << "{\"object\":" << quote(result.object) << ",\"listing\":" << quote(result.listing) << ",\"symbols\":{";
+    bool first=true;
+    for (const auto& symbol : result.symbols) {
+        if (!first) out << ',';
+        first=false;
+        out << quote(symbol.first) << ':' << symbol.second;
+    }
+    return out.str()+"}}";
+}
+
+// Alinha ao início de uma linha de 16 bytes da tabela. Caso PC ultrapasse
+// o espaço válido, a API ainda devolve a última linha para mostrar o erro.
+
 uint32_t memory_view(const SicXe& machine) {
-    // Alinha ao início de uma linha de 16 bytes da tabela. Caso PC ultrapasse
-    // o espaço válido, a API ainda devolve a última linha para mostrar o erro.
     return std::min(machine.reg(SicXe::PC), SicXe::memory_size-1) & ~15u;
 }
 
@@ -186,6 +207,11 @@ void handle(int fd, SicXe& machine) {
             // carga escolhida na interface. Erro de carga preserva o estado.
             machine.load(body,number(param("address")));
             send_response(fd,200,"application/json; charset=utf-8",state(machine,memory_view(machine),128));
+        } else if (method=="POST" && path=="/api/assemble") {
+            // O montador é independente da máquina: erros não alteram o
+            // programa carregado. O objeto retornado pode então ser carregado.
+            const AssemblyResult result=Assembler().assemble(body);
+            send_response(fd,200,"application/json; charset=utf-8",assembly_json(result));
         } else if (method=="POST" && path=="/api/step") {
             // Executa uma tentativa de instrução e devolve o estado resultante.
             machine.step();
@@ -223,6 +249,7 @@ int main(int argc, char** argv) {
         const int server = ::socket(AF_INET,SOCK_STREAM,0);
         if (server<0) throw std::runtime_error("Não foi possível abrir socket");
         const int reuse = 1;
+
         // Permite reiniciar o servidor logo após encerrá-lo sem esperar a porta.
         ::setsockopt(server,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse));
         sockaddr_in address{};
@@ -230,6 +257,7 @@ int main(int argc, char** argv) {
         if (::bind(server,reinterpret_cast<sockaddr*>(&address),sizeof(address))<0 || ::listen(server,16)<0)
             throw std::runtime_error("Não foi possível escutar na porta escolhida");
         std::cout << "SIC/XE: http://127.0.0.1:" << port << "\n" << std::flush;
+
         // Atende uma conexão por vez. Uma ação termina antes de a próxima
         // começar, portanto renderização e execução veem estados consistentes.
         while (true) {

@@ -37,6 +37,8 @@ input:not([type=file]):focus,textarea:focus{border-color:#75e0cb;box-shadow:0 0 
 input:not([type=file]){display:block;width:145px;padding:10px 11px;margin-top:7px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 textarea{resize:vertical;width:100%;padding:14px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;line-height:1.6}
 #object{min-height:162px}
+#source{min-height:230px}
+.listing{min-height:130px;color:#aebbd1;background:#0a1221}
 .file-button,button{cursor:pointer;border:1px solid #45536c;background:#1c2840;color:#e9eef8;padding:10px 14px;border-radius:7px;font-weight:700;transition:background .15s,border-color .15s,transform .15s}
 .file-button:hover,button:hover:not(:disabled){background:#293958;border-color:#7084a1}
 .file-button input{display:none}

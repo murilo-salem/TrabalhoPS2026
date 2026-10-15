@@ -18,7 +18,7 @@ O PDF contém ambiguidades: chama a unidade de endereçamento de “palavra”, 
 
 ## Estruturas de dados e módulos
 
-`SicXe` (`src/sicxe.hpp` e `src/sicxe.cpp`) encapsula o estado e não depende da interface:
+`SicXe` (`src/sicxe.hpp` e `src/sicxe.cpp`) encapsula o estado e não depende da interface. `Assembler` (`src/assembler.hpp` e `src/assembler.cpp`) implementa o montador de duas passagens e também não depende de HTTP:
 
 | Estrutura | Função |
 |---|---|
@@ -28,6 +28,9 @@ O PDF contém ambiguidades: chama a unidade de endereçamento de “palavra”, 
 | `condition_`, `halted_`, `error_`, `steps_` | Condição, parada, diagnóstico e instruções concluídas |
 | `object_`, `name_`, endereços e comprimento | Programa original e metadados, também usados pelo reinício |
 | `Record { type, fields }` | Registro objeto intermediário para validar carga e aplicar relocação |
+| `Line` | Linha fonte normalizada, com número, rótulo, operação, operando, endereço e tamanho |
+| `map<string,uint32_t> symbols` | `SYMTAB` construída na primeira passagem, com nomes normalizados em maiúsculas |
+| `AssemblyResult` | Programa objeto, listagem e tabela de símbolos publicados após montagem válida |
 
 O servidor em `src/main.cpp` valida parâmetros e serializa JSON. A interface liga os controles às rotas e usa o estado retornado pelo executor. Destaca alterações dos registradores e o byte apontado pelo PC. Com PC fora da memória, a inspeção permanece na última linha válida para manter o diagnóstico visível.
 
@@ -44,6 +47,15 @@ O servidor em `src/main.cpp` valida parâmetros e serializa JSON. A interface li
 | `compare` | Atualiza CC e dois bits baixos de SW, preservando os demais |
 | `state` no servidor | Produz JSON com metadados, registradores e janela de memória |
 | `render` / `renderMemory` na interface | Atualizam os painéis e a tabela de memória |
+| `Assembler::assemble(source)` | Executa as duas passagens e devolve objeto, listagem e símbolos |
+
+## Montador
+
+A passagem 1 interpreta linhas livres, ignora linhas vazias e comentários iniciados por `.`, atribui endereços com `LOCCTR`, detecta símbolos duplicados e calcula o tamanho da seção. Ela reconhece `START`, `END`, `BYTE`, `WORD`, `RESB`, `RESW`, `BASE` e `NOBASE`, as 38 instruções executáveis e o prefixo `+` para formato 4.
+
+A passagem 2 codifica registradores e flags `nixbpe`. Referências simbólicas de formato 3 tentam primeiro deslocamento relativo ao PC, no intervalo -2048 a 2047, e depois deslocamento sem sinal relativo à base, de 0 a 4095. Formato 4 aceita 20 bits e produz um registro `M` de cinco meios-bytes quando o campo contém símbolo relocável. Textos contíguos são agrupados em registros `T` de até 30 bytes e reservas encerram o registro atual. `END` escolhe o ponto de entrada.
+
+Erros trazem o número da linha e interrompem a montagem antes de publicar qualquer resultado. O endpoint de montagem não altera a máquina; somente uma chamada posterior a `/api/load` substitui o programa carregado.
 
 O cálculo de endereço usa o PC da próxima instrução. Deslocamento relativo ao PC tem 12 bits com sinal; base relativo tem 12 bits sem sinal. Formato 4 usa endereço de 20 bits. Em modo SIC (`n=i=0`), o endereço ocupa 15 bits e a instrução sempre tem três bytes. A indexação soma X; no indireto, a palavra no endereço calculado fornece o endereço final; no imediato, o endereço calculado é o próprio valor.
 
@@ -75,6 +87,7 @@ O carregador aceita uma seção: H define nome, origem e comprimento; T fornece 
 |---|---|
 | GET `/api/state?address=0&count=128` | Consulta até 512 bytes; endereço padrão segue PC |
 | POST `/api/load?address=0` | Corpo em texto com programa objeto; carrega e reinicializa |
+| POST `/api/assemble` | Corpo com fonte assembly; devolve `object`, `listing` e `symbols` |
 | POST `/api/step` | Executa uma instrução |
 | POST `/api/run?limit=10000&breakpoint=12` | De 1 a 100.000 tentativas; breakpoint opcional |
 | POST `/api/reset` | Recarrega o programa original |
@@ -83,8 +96,8 @@ Respostas de sucesso contêm `name`, `loaded`, `halted`, `error`, `start`, `leng
 
 ## Verificação e limitações
 
-`sh compilar.sh` recompila e executa CTest. Os testes originais cobrem soma, reinício, relocação, formato estendido, indireto e carga inválida atômica. `sicxe_requirements_tests` cobre representantes das famílias de instruções exigidas, combinações de endereçamento da tabela, deslocamento negativo, compatibilidade SIC, sinais, overflow, bytes, desvios tomados/não tomados, sub-rotina, limites, exclusões, registradores/flags inválidos e divisão por zero. As verificações permanecem ativas em Release; ainda não há um caso isolado para cada uma das 38 instruções.
+`sh compilar.sh` recompila e executa CTest. Os testes originais cobrem soma, reinício, relocação, formato estendido, indireto e carga inválida atômica. `sicxe_requirements_tests` cobre representantes das famílias de instruções exigidas, combinações de endereçamento da tabela, deslocamento negativo, compatibilidade SIC, sinais, overflow, bytes, desvios tomados/não tomados, sub-rotina, limites, exclusões, registradores/flags inválidos e divisão por zero. `assembler_tests` verifica as duas passagens, `SYMTAB`, diretivas, formatos 2/3/4, registros de modificação, execução do objeto produzido e diagnósticos. As verificações permanecem ativas em Release; ainda não há um caso isolado para cada uma das 38 instruções.
 
-Com Python 3, `sicxe_http_tests` inicia servidor temporário e verifica arquivos da interface, carga, passo, breakpoint, soma, reinício, parâmetros inválidos, exclusões e PC fora da memória. Não substitui inspeção visual no navegador. Testes não são prova formal de correção. O servidor usa APIs Linux/POSIX.
+Com Python 3, `sicxe_http_tests` inicia servidor temporário e verifica arquivos da interface, montagem, carga, passo, breakpoint, soma, reinício, parâmetros inválidos, exclusões e PC fora da memória. Não substitui inspeção visual no navegador. Testes não são prova formal de correção. O servidor usa APIs Linux/POSIX.
 
 A entrega requer testes sobre compilação atualizada, conferência visual, disponibilização no GitHub e gravação da apresentação pelo grupo.

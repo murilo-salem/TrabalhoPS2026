@@ -90,6 +90,27 @@ $('file').addEventListener('change', async event => {
   $('object').value = await file.text();
   $('fileName').textContent = file.name;
 });
+const sourceExample = `SOMA START 0
+      LDA #5
+      ADD #7
+      STA RESULT
+      RSUB
+RESULT RESW 1
+      END SOMA`;
+$('sourceExample').addEventListener('click', () => {
+  $('source').value = sourceExample;
+  showNotice('Exemplo fonte inserido. Clique em Montar programa.');
+});
+$('assemble').addEventListener('click', async () => {
+  try {
+    const result = await request('/api/assemble', 'POST', $('source').value);
+    $('object').value = result.object;
+    $('listing').value = result.listing;
+    const count = Object.keys(result.symbols).length;
+    $('fileName').textContent = `Gerado pelo montador · ${count} símbolo${count === 1 ? '' : 's'}`;
+    showNotice('Montagem concluída em duas passagens. O programa objeto está pronto para carregar.');
+  } catch (error) { showNotice(error.message, true); }
+});
 $('example').addEventListener('click', () => {
   $('object').value = 'H^SOMA^000000^00000F\nT^000000^0F^0100051900070F20034F0000000000\nE^000000';
   $('fileName').textContent = 'Exemplo: 5 + 7 → memória 0x0000C';

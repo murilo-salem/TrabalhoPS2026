@@ -53,6 +53,11 @@ try:
     # Verifica a interface e um fluxo real: carregar, pausar, continuar e reiniciar.
     for path in ["/", "/app.js", "/style.css"]:
         check(request(path, raw=True), f"Interface vazia: {path}")
+    source = "SOMA START 0\n LDA #5\n ADD #7\n STA RESULT\n RSUB\nRESULT RESW 1\n END SOMA\n"
+    assembled = request("/api/assemble", source)
+    check(assembled["object"].startswith("H^SOMA^000000^00000F"), "montagem HTTP")
+    check(assembled["symbols"]["RESULT"] == 12 and "STA RESULT" in assembled["listing"], "SYMTAB e listagem HTTP")
+    request("/api/assemble", "P START 0\nX WORD 1\nX WORD 2\n END P\n", expected=400)
     program = "H^SOMA^000000^00000F\nT^000000^0F^0100051900070F20034F0000000000\nE^000000\n"
     request("/api/load", program)
     check(request("/api/step", "")["registers"][0] == 5, "passo LDA")

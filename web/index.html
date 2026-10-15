@@ -22,9 +22,18 @@
     <div id="notice" class="notice" role="status" aria-live="polite"></div>
     <div class="layout">
       <div class="main-column">
+        <!-- O montador produz o programa objeto consumido pelo painel seguinte. -->
+        <section class="panel assembler">
+          <div class="panel-heading"><div><p class="eyebrow">01 / MONTAGEM</p><h2>Programa fonte</h2></div><span class="tag">DUAS PASSAGENS</span></div>
+          <label for="source" class="label">Assembly SIC/XE</label>
+          <textarea id="source" spellcheck="false" placeholder="PROG START 0&#10;      LDA #5&#10;      RSUB&#10;      END PROG"></textarea>
+          <div class="field-row bottom"><button id="sourceExample" class="text-button">Inserir exemplo fonte →</button><button id="assemble" class="primary">Montar programa</button></div>
+          <label for="listing" class="label">Listagem e endereços</label>
+          <textarea id="listing" class="listing" readonly placeholder="A listagem da passagem 2 aparecerá aqui."></textarea>
+        </section>
         <!-- Carregamento de registros objeto; escolher um arquivo ainda não o executa. -->
         <section class="panel loader">
-          <div class="panel-heading"><div><p class="eyebrow">01 / ENTRADA</p><h2>Programa objeto</h2></div><span class="tag">H · T · M · E</span></div>
+          <div class="panel-heading"><div><p class="eyebrow">02 / CARGA</p><h2>Programa objeto</h2></div><span class="tag">H · T · M · E</span></div>
           <div class="field-row"><label class="file-button">Escolher arquivo <input id="file" type="file" accept=".obj,.txt,.sic,.*"></label><span id="fileName" class="muted">ou cole o conteúdo abaixo</span></div>
           <label for="object" class="label">Registros objeto</label>
           <textarea id="object" spellcheck="false" placeholder="H^PROG^000000^00000C&#10;T^000000^0C^...&#10;E^000000"></textarea>
@@ -33,14 +42,14 @@
         </section>
         <!-- Execução por passo, limite de passos e parada antes do endereço informado. -->
         <section class="panel controls">
-          <div class="panel-heading"><div><p class="eyebrow">02 / EXECUÇÃO</p><h2>Controle</h2></div><span id="programName" class="tag">—</span></div>
+          <div class="panel-heading"><div><p class="eyebrow">03 / EXECUÇÃO</p><h2>Controle</h2></div><span id="programName" class="tag">—</span></div>
           <div class="actions"><button id="step" class="primary" disabled>Avançar 1 instrução</button><button id="run" disabled>Executar</button><button id="reset" disabled>Reiniciar</button></div>
           <div class="field-row settings"><label for="limit">Limite de passos <input id="limit" type="number" min="1" max="100000" value="10000"></label><label for="breakpoint">Parar antes do endereço <input id="breakpoint" placeholder="0x... (opcional)"></label></div>
           <div class="run-meta"><div><span>PC</span><strong id="pc">00000</strong></div><div><span>PASSOS</span><strong id="steps">0</strong></div><div><span>CC</span><strong id="cc">=</strong></div></div>
         </section>
         <!-- Janela de 16 bytes por linha; o botão pode seguir ou não o PC. -->
         <section class="panel memory-panel">
-          <div class="panel-heading"><div><p class="eyebrow">03 / INSPEÇÃO</p><h2>Memória</h2></div><span class="tag">HEXADECIMAL</span></div>
+          <div class="panel-heading"><div><p class="eyebrow">04 / INSPEÇÃO</p><h2>Memória</h2></div><span class="tag">HEXADECIMAL</span></div>
           <div class="field-row"><label for="memoryAddress">Endereço inicial <input id="memoryAddress" value="0x00000"></label><button id="inspect">Inspecionar</button><button id="follow" class="text-button active" aria-pressed="true">Seguir PC: ligado</button></div>
           <div class="memory-wrap"><table class="memory-table"><thead><tr><th>ENDEREÇO</th><th colspan="16">BYTES</th><th>ASCII</th></tr></thead><tbody id="memory"></tbody></table></div>
           <p class="hint">O byte destacado indica o contador de programa.</p>
@@ -50,7 +59,7 @@
         <!-- Registradores e ajuda refletem o recorte de instruções do trabalho. -->
         <section class="panel registers"><div class="panel-heading"><div><p class="eyebrow">ESTADO</p><h2>Registradores</h2></div><span class="tag">HEX / DEC</span></div><div id="registers" class="register-grid"></div></section>
         <section class="panel help"><p class="eyebrow">PRIMEIRO TRABALHO</p><h2>Conjunto de instruções</h2><p>Esta versão executa as instruções em preto na tabela do enunciado. Instruções em vermelho, incluindo ponto flutuante e entrada/saída, encerram a execução com uma mensagem explicativa.</p><p>O registrador F de 48 bits é exibido conforme a tabela de registradores; permanece zerado nesta etapa.</p></section>
-        <section class="panel help"><p class="eyebrow">REFERÊNCIA RÁPIDA</p><h2>Como usar</h2><ol><li>Abra um arquivo objeto SIC/XE ou use o exemplo.</li><li>Carregue no endereço desejado.</li><li>Avance uma instrução ou execute até o limite ou ponto de parada.</li><li>Veja os efeitos nos registradores e na memória.</li></ol></section>
+        <section class="panel help"><p class="eyebrow">REFERÊNCIA RÁPIDA</p><h2>Como usar</h2><ol><li>Escreva o fonte e monte-o, ou abra um arquivo objeto.</li><li>Confira a listagem e carregue o objeto gerado.</li><li>Avance uma instrução ou execute até o limite ou ponto de parada.</li><li>Veja os efeitos nos registradores e na memória.</li></ol></section>
       </aside>
     </div>
   </main>
