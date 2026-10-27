@@ -9,7 +9,14 @@
 #include <stdexcept>
 #include <vector>
 
+// ============================================================================
+// PARTE 1 - DEFINIÇÕES DA ARQUITETURA E FUNÇÕES AUXILIARES
+// Contém a tabela de instruções, as diretivas reconhecidas e as conversões
+// básicas usadas durante todo o processo de montagem.
+// ============================================================================
 namespace {
+// Cada entrada da OPTAB informa o opcode, o formato original e a quantidade
+// esperada de operandos da instrução.
 struct Op { uint8_t code; uint8_t format; uint8_t operands; };
 
 const std::map<std::string, Op>& operations() {
@@ -36,27 +43,35 @@ const std::set<std::string>& directives() {
     return values;
 }
 
+// Remove espaços das extremidades sem modificar espaços internos, importantes
+// em constantes como BYTE C'OLA MUNDO'.
 std::string trim(std::string value) {
     const auto begin = value.find_first_not_of(" \t\r\n");
     if (begin == std::string::npos) return "";
     return value.substr(begin, value.find_last_not_of(" \t\r\n")-begin+1);
 }
 
+// A montagem não diferencia maiúsculas de minúsculas em nomes e mnemônicos.
 std::string upper(std::string value) {
     std::transform(value.begin(),value.end(),value.begin(),[](unsigned char c){ return char(std::toupper(c)); });
     return value;
 }
 
+// Produz os campos hexadecimais de largura fixa dos registros objeto.
 std::string hex(uint32_t value, unsigned width) {
     std::ostringstream out;
     out << std::uppercase << std::hex << std::setfill('0') << std::setw(int(width)) << value;
     return out.str();
 }
 
+// Centraliza os diagnósticos para que todo erro relacionado ao fonte indique
+// exatamente a linha onde foi encontrado.
 [[noreturn]] void fail(size_t line, const std::string& message) {
     throw std::runtime_error("Linha " + std::to_string(line) + ": " + message);
 }
 
+// Converte números, aceitando a base esperada pelo contexto, prefixo 0x ou
+// sufixo H para hexadecimal. O acúmulo em 64 bits permite detectar overflow.
 uint32_t number(const std::string& text, int base, size_t line) {
     std::string value = trim(text);
     if (value.empty() || value[0]=='-') fail(line,"número inválido: " + text);
@@ -75,12 +90,22 @@ uint32_t number(const std::string& text, int base, size_t line) {
     return uint32_t(result);
 }
 
+// O prefixo '+' muda uma instrução de formato 3 para formato 4, mas não muda
+// sua presença na tabela de operações.
 bool known_operation(std::string token) {
     if (!token.empty() && token[0]=='+') token.erase(token.begin());
     token=upper(token);
     return operations().count(token) || directives().count(token);
 }
 
+// ============================================================================
+// PARTE 2 - LEITURA E REPRESENTAÇÃO DO PROGRAMA FONTE
+// Transforma o texto em linhas estruturadas e fornece rotinas para interpretar
+// constantes, registradores, listas de operandos e símbolos.
+// ============================================================================
+
+// A linha mantém tanto o texto original, usado na listagem, quanto os campos
+// normalizados e os valores calculados durante a primeira passagem.
 struct Line {
     size_t number=0;
     std::string original, label, operation, operand;
@@ -88,6 +113,8 @@ struct Line {
     bool comment=false;
 };
 
+// Se o primeiro termo não for uma instrução nem diretiva, ele é interpretado
+// como rótulo. Linhas vazias e linhas iniciadas por ponto são comentários.
 Line parse_line(const std::string& original, size_t line_number) {
     Line line; line.number=line_number; line.original=original;
     const std::string clean=trim(original);
@@ -109,6 +136,8 @@ Line parse_line(const std::string& original, size_t line_number) {
     return line;
 }
 
+// Converte BYTE C'...' diretamente em caracteres e BYTE X'...' em pares de
+// dígitos hexadecimais.
 std::vector<uint8_t> byte_value(const std::string& operand, size_t line) {
     if (operand.size()<3 || operand[1]!='\'' || operand.back()!='\'' || (std::toupper(static_cast<unsigned char>(operand[0]))!='C' && std::toupper(static_cast<unsigned char>(operand[0]))!='X'))
         fail(line,"BYTE exige C'...' ou X'...'");
@@ -123,6 +152,7 @@ std::vector<uint8_t> byte_value(const std::string& operand, size_t line) {
     return bytes;
 }
 
+// Traduz o nome textual para o número de registrador definido pelo SIC/XE.
 uint8_t register_number(const std::string& name, size_t line) {
     static const std::map<std::string,uint8_t> regs={{"A",0},{"X",1},{"L",2},{"B",3},{"S",4},{"T",5},{"F",6},{"PC",8},{"SW",9}};
     const auto found=regs.find(upper(trim(name)));
@@ -130,6 +160,7 @@ uint8_t register_number(const std::string& name, size_t line) {
     return found->second;
 }
 
+// Separa operandos de formato 2, como ADDR A,X e SHIFTL A,4.
 std::vector<std::string> operands(const std::string& text) {
     std::vector<std::string> result;
     std::stringstream stream(text);
@@ -139,6 +170,8 @@ std::vector<std::string> operands(const std::string& text) {
     return result;
 }
 
+// Consulta primeiro a SYMTAB. Se o termo não for um símbolo, ele deve ser uma
+// constante numérica decimal (ou usar uma notação hexadecimal explícita).
 uint32_t resolve(const std::string& value, const std::map<std::string,uint32_t>& symbols, size_t line, bool& symbolic) {
     const std::string key=upper(trim(value));
     const auto found=symbols.find(key);
@@ -147,10 +180,13 @@ uint32_t resolve(const std::string& value, const std::map<std::string,uint32_t>&
     return number(key,10,line);
 }
 
+// Uma palavra SIC/XE ocupa três bytes em ordem big-endian.
 void append_u24(std::vector<uint8_t>& bytes, uint32_t value) {
     bytes.push_back(uint8_t(value>>16)); bytes.push_back(uint8_t(value>>8)); bytes.push_back(uint8_t(value));
 }
 
+// Converte bytes já codificados na representação usada pelos registros T e
+// pela coluna de código objeto da listagem.
 std::string bytes_hex(const std::vector<uint8_t>& bytes) {
     std::string result;
     for (uint8_t byte : bytes) result += hex(byte,2);
@@ -158,7 +194,14 @@ std::string bytes_hex(const std::vector<uint8_t>& bytes) {
 }
 }
 
+// ============================================================================
+// PARTE 3 - MONTAGEM EM DUAS PASSAGENS
+// A passagem 1 calcula LOCCTR e SYMTAB. A passagem 2 usa esses endereços para
+// codificar instruções, selecionar os bits nixbpe e registrar relocações.
+// ============================================================================
 AssemblyResult Assembler::assemble(const std::string& source) const {
+    // Antes das passagens, o texto é convertido para a representação Line.
+    // Nenhum resultado parcial é exposto se alguma linha for inválida.
     std::vector<Line> lines;
     std::istringstream input(source);
     std::string raw;
@@ -166,7 +209,7 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
     while (std::getline(input,raw)) lines.push_back(parse_line(raw,++line_number));
     if (lines.empty()) throw std::runtime_error("Programa fonte vazio");
 
-    // Passagem 1: atribui endereços, valida tamanhos e cria a tabela de símbolos.
+    // PASSAGEM 1: atribui endereços, valida tamanhos e cria a tabela de símbolos.
     std::map<std::string,uint32_t> symbols;
     uint32_t start=0, location=0;
     std::string program_name="NONAME";
@@ -188,6 +231,7 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
             }
         } else if (line.operation=="START") fail(line.number,"START deve ser a primeira instrução");
         line.address=location;
+        // O endereço atual é associado ao rótulo antes de LOCCTR avançar.
         if (!line.label.empty()) {
             if (symbols.count(line.label)) fail(line.number,"símbolo duplicado: " + line.label);
             symbols[line.label]=location;
@@ -197,6 +241,8 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
         bool extended=!mnemonic.empty() && mnemonic[0]=='+';
         if (extended) mnemonic.erase(mnemonic.begin());
         const auto op=operations().find(mnemonic);
+        // Instruções avançam pelo próprio formato; diretivas de dados e reserva
+        // avançam pela quantidade de bytes que ocupam ou reservam.
         if (op!=operations().end()) {
             if (extended && op->second.format!=3) fail(line.number,"formato 4 inválido para " + mnemonic);
             line.size=extended?4:op->second.format;
@@ -218,7 +264,7 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
     const uint32_t length=location-start;
     if (length==0) throw std::runtime_error("Programa não gera área de memória");
 
-    // Passagem 2: traduz cada linha usando a SYMTAB completa.
+    // PASSAGEM 2: traduz cada linha usando a SYMTAB completa.
     std::vector<std::vector<uint8_t>> codes(lines.size());
     std::vector<uint32_t> modifications;
     bool base_set=false; uint32_t base=0; uint32_t entry=start;
@@ -230,6 +276,8 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
             continue;
         }
         if (line.operation=="BASE") {
+            // BASE não gera bytes: apenas habilita endereçamento base-relativo
+            // para as instruções seguintes, até que NOBASE seja encontrado.
             if (line.operand.empty()) fail(line.number,"operando BASE ausente");
             bool symbolic=false; base=resolve(line.operand,symbols,line.number,symbolic); base_set=true; continue;
         }
@@ -250,6 +298,8 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
         if (extended) mnemonic.erase(mnemonic.begin());
         const Op op=operations().at(mnemonic);
         if (op.format==2) {
+            // No formato 2, r1 ocupa o nibble alto e r2 o nibble baixo. Nas
+            // instruções de deslocamento, o segundo nibble guarda n - 1.
             const auto args=operands(line.operand);
             if (args.size()!=op.operands) fail(line.number,"quantidade de operandos inválida para " + mnemonic);
             const uint8_t r1=register_number(args[0],line.number);
@@ -271,6 +321,8 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
 
         std::string operand=trim(line.operand);
         bool n=true,i=true,x=false;
+        // O modo simples começa com n=i=1. '#' seleciona imediato, '@'
+        // indireto e o sufixo ',X' ativa indexação somente no modo simples.
         if (!operand.empty() && operand[0]=='#') { n=false; i=true; operand=trim(operand.substr(1)); }
         else if (!operand.empty() && operand[0]=='@') { n=true; i=false; operand=trim(operand.substr(1)); }
         const auto comma=operand.find(',');
@@ -290,6 +342,8 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
         } else target=resolve(operand,symbols,line.number,symbolic);
         const uint8_t first=uint8_t(op.code|(n?2:0)|(i?1:0));
         if (extended) {
+            // Formato 4 possui endereço de 20 bits. Um símbolo relocável gera
+            // depois um registro M começando no byte seguinte ao opcode.
             if (target>0xfffff) fail(line.number,"endereço não cabe no formato 4");
             codes[index]={first,uint8_t((x?0x80:0)|0x10|(target>>16)),uint8_t(target>>8),uint8_t(target)};
             if (symbolic) modifications.push_back(line.address+1);
@@ -299,6 +353,8 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
                 if (target>0xfff) fail(line.number,"valor absoluto não cabe no formato 3; use formato 4");
                 field=uint16_t(target);
             } else {
+                // Para símbolos no formato 3, PC relativo é a primeira escolha;
+                // BASE é usado somente quando o deslocamento de PC não cabe.
                 const int64_t displacement=int64_t(target)-int64_t(line.address+3);
                 if (displacement>=-2048 && displacement<=2047) { flags|=0x20; field=uint16_t(displacement)&0xfff; }
                 else if (base_set && target>=base && target-base<=0xfff) { flags|=0x40; field=uint16_t(target-base); }
@@ -308,11 +364,19 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
         }
     }
 
-    // Empacota bytes contíguos em registros T de no máximo 30 bytes.
+    // ========================================================================
+    // PARTE 4 - GERAÇÃO DOS REGISTROS OBJETO E DA LISTAGEM
+    // Empacota o resultado da segunda passagem em H/T/M/E e produz uma visão
+    // legível com linha, endereço, código objeto e texto fonte original.
+    // ========================================================================
+
+    // O registro H descreve nome, endereço inicial e tamanho total da seção.
     std::ostringstream object;
     std::string header_name=program_name.substr(0,6);
     object << "H^" << header_name << '^' << hex(start,6) << '^' << hex(length,6) << '\n';
     std::vector<uint8_t> text; uint32_t text_start=0;
+    // Cada registro T comporta no máximo 30 bytes contíguos. RESB e RESW
+    // provocam uma quebra porque não produzem conteúdo no arquivo objeto.
     auto flush=[&]() {
         if (text.empty()) return;
         object << "T^" << hex(text_start,6) << '^' << hex(uint32_t(text.size()),2) << '^' << bytes_hex(text) << '\n';
@@ -333,9 +397,13 @@ AssemblyResult Assembler::assemble(const std::string& source) const {
         }
     }
     flush();
+    // Campos simbólicos de formato 4 usam cinco meios-bytes e precisam ser
+    // ajustados pelo carregador quando a seção for carregada em outro endereço.
     for (uint32_t address : modifications) object << "M^" << hex(address,6) << "^05+" << header_name << '\n';
     object << "E^" << hex(entry,6) << '\n';
 
+    // A listagem preserva inclusive comentários e linhas vazias para manter a
+    // correspondência direta entre o diagnóstico, o fonte e o código gerado.
     std::ostringstream listing;
     for (size_t index=0;index<lines.size();++index) {
         const auto& line=lines[index];
